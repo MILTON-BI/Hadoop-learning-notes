@@ -1,0 +1,240 @@
+一. hadoop包含模块
+—common：工具类+rpc框架
+
+—hdfs: hadoop distribute file system 分布式文件系统（负责海量数据分布式存储）
+	- 架构：主从架构。
+		- 主架构：java进程namenode；
+		- 从架构：java进程datanode
+		- 助理：secondary_namenode，分担主进程的压力
+
+—yarn：集群的资源调度框架，类似windows的操作系统
+	- 架构：主从架构。
+		- 主架构：java进程resourcemanager；负责统筹资源
+		- 从架构：nodemanager 
+
+—mapreduce：分布式计算框架，有计算任务才会启动相应进程
+
+
+二. hadoop搭建
+（零）搭建准备工作
+1. ip配置：用虚拟机虚拟网络编辑器
+	- 为每台主机设置ip
+2. 主机名配置：vi /etc/hostname
+	- 为每个节点设置主机名
+3. 主机映射 ：vi /etc/hosts
+	- 主机ip  主机名
+	- 例如：192.168.186.129  hadoopm
+	- 如果有多个节点，则需要分别建立主机ip与主机名的映射
+4. 关闭防火墙和sellinux（linux自带的权限认证）
+	- service iptables stop
+	- vi /etc/sellinux/config
+5. 将系统的启动级别改为3
+	- vi etc/inittab : 选择3
+		- 权限3：完全多用户模式
+		- 权限5：xll图形用户界面
+	
+6. 创建普通用户，并为普通用户添加sudolers权限
+	- 创建用户useradd 用户名
+	- 设置密码passwd 用户名
+	- 添加权限：vi /etc/sudoers
+	- 注意：如果搭建多个节点的完全分布式，各个节点的普通用户名和密码必须要相同
+
+7. 配置免密登录
+	先切换到创建的普通用户hadoop_user (123456)
+	- 生成密钥：ssh-keygen
+		- 多个节点的完全分布式，所有节点都要生成密钥
+	- 发送密钥：
+		- cd .ssh/
+		- ssh-copy-id 主机名
+		- 多个节点的完全分布式，各个节点之间要相互发送密钥（因为可能需要从任何一台节点机器登录其他节点机器）
+	- 验证：ssh 主机名
+		- 多个节点的完全分布式，各个节点之间都要相互验证
+
+8. 安装jdk
+	- 配置：vi /etc/profile
+		- 在末尾加入：export JAVA_HOME=jdk解压的目录名
+			      export PATH=$PATH:$JAVA_HOME/bin
+	- 让配置生效： source /etc/profile
+	- 验证： java -version
+	- 写在jdk:  rpm -qa | grep jdk
+ 
+9. 时间同步：伪分布式不需要，完全分布式必须在每个节点做
+	- 不能联网的情况下，手动指定时间（ date -s 时间）， 或者手动搭建一个时间服务器
+	- 可以联网的情况下，找一个公网中的公用的时间服务器，所有节点中的时间与公共时间服务器保持一致
+		- ntpdate 公网的时间服务器地址
+
+（一）伪分布式
+1. 选择安装版本
+	- 不选太陈旧的版本，也不选太新的版本（多数企业没有普及应用）
+	- 2.7版本是目前企业用的最多的版本
+2. 切换到普通用户：一般企业不会让你使用root用户，需要申请
+3. 上传安装包，解压
+4. 修改配置文件
+	- 配置文件都在安装目录下的etc/hadoop目录下（本目录是配置文件存储目录）
+		- bin\sbin目录：启动文件
+		- lib目录：工程依赖的java包
+		- share目录：共享工具
+	- 需要修改6个配置文件
+		- hadoop-env.sh
+			- 修改java环境变量：export JAVA_HOME=/usr/local/jdk
+
+		- core-site.xml
+			- common模块：核心、公共的配置文件
+			- 配置：从官网上的相应版本的文档中直接copy
+			- 配置主节点的url链接
+				-   <name>fs.defaultFS</name>
+              				    <value>hdfs://hadoopm:9000</value>
+				-  通信协议://主机名：端口号
+
+		- hdfs-site.xml
+			- 配置副本个数：3个
+				-   <name>dfs.replication</name>
+                			     <value>1</value>
+		- yarn-site.xml
+			-  <name>yarn.nodemanager.aux-services</name>
+                		   <value>mapreduce_shuffle</value>
+			- 配置yarn上资源调度的程序mapreduce_shuffle
+
+		- mapred-site.xml
+			- 目录下的文件为临时文件，先复制一份
+				- cp mapred-site.xml.template mapred-site.xml
+			-  <name>mapreduce.framework.name</name>
+               			   <value>yarn</value> 
+			-  配置mapreduce的运行平台（还可以跑在其他资源调度平台上）
+
+		- slaves：配置secondarynodename
+			- 配置为本机名
+
+5. 配置环境变量： vi  ~/etc/profile
+	- export HADOOP_HOME=/usr/local/hadoop
+	  export PATH=$PATH:$JAVA_HOME/bin:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:
+	- 让环境变量生效：source ~/etc/profile
+	- 验证：hadoop version
+
+6. 配置完成后，进行格式化
+	- hadoop namenode -format
+	- 或hdfs namenode -format
+
+7. 启动
+	- start-all.sh：已经过时，建议使用以下命令：start-dfs.sh 或 start-yarn.sh
+	- 验证：jps查看java进程
+		- 启动6个进程ResourceManager、NodeManager、SecondaryNameNode、NameNode、DataNode、Jps
+		- mapreduce只有启动相应运算才会启动
+	- 验证：通过网页验证
+		- hdfs验证：http://主机名（或ip地址）：50070
+		- yarn验证：http://主机名（或ip地址）：8088
+
+（二）完全分布式
+0. 搭建准备：按照上面搭建准备的步骤，对每个节点做所有操作
+1. 集群搭建：先在一个节点上执行所有操作，再远程发送到其他节点
+（1）选择安装版本、上传安装包、解压，
+（2）修改环境变量：
+（3）修改配置文件（6个）：
+	- 集群规划（假设3台节点机器）：注意secondary不能和namenode同一个节点（热备份的功能）
+	hdfs(主节点）	hdfs(从节点)	hdfs(secondarynode) 	yarn(主节点)	yarn(从节点）
+hadoop1	namenode	datanode							nodemanager
+hadoop2			datanode		secondarynode				nodemanager
+hadoop3			datanode					resouremanager	nodemanager
+	
+（4）远程发送：
+	- scp -r  本机要发送的文件  要发送到的主机名:$PWD
+（5）格式化：必须在namenode的节点（hdfs主节点）
+（6）启动：
+	- 先启动hdfs，可以在任意节点启动（start-dfs.sh）
+		- jps命令察看的时候，各节点启动的进程应该和集群规划一致
+	- 启动yarn，要在yarn的主节点进行(start-yarn.sh)
+
+
+三、集群搭建可能遇到的问题
+1. 主机名的问题：
+（1）主机找不到
+	- 先检查这两个配置文件：/etc/sysconfig/network、 /etc/hosts   
+2. 格式化时候报错 
+	- 最常见的是配置文件错误，根据错误提示到相应文件调整，并重新格式化
+3. 某些进程启动不了
+（1）措施一：将整个集群先关闭，再重新启动。
+	- 在yarn的主节点执行stop-yarn.sh，在任意节点执行stop-dfs.sh
+	- dfs可以在任何节点执行启动和关闭，yarn必须在主节点执行
+（2）措施二：单独启动某些没有启动的进程 
+	- 运行sbin目录下hadoop-daemon.sh start datanode (namenode secondarynamenode)
+	- 运行sbin目录下yarn-daemon.sh  start  nodemanager (resourcemanager)
+
+四、搭建过程中的注意事项
+1. 集群成功的格式化只能格式化成功一次，不成功要一直持续到成功
+——在公司中，集群一旦搭建成功，禁止使用格式化命令
+——格式化会清除主节点的元数据，必须由运维人员进行操作
+（1）格式化过程中，创建了namenode存储数据的相关目录和文件version（hadoop/dfs/name/current/)，
+用来记录集群的版本信息。每格式化一次都会生成新的信息，如下
+	-  namespaceID=2055950066
+	   clusterID=CID-355064eb-4d4a-4cd6-8317-e47725827126      —集群的版本信息，最重要的
+	   cTime=0
+	   storageType=NAME_NODE
+	   blockpoolID=BP-566843233-192.168.186.129-1552439931500
+	   layoutVersion=-63
+	- namenode与datanode中的clusterID相同
+（2）想要重复格式化，要分两步
+	- 第一步：删除namenode中格式化创建的数据目录：rm -rf /usr/local/hadoop/dfs/name
+	- 第二步：删除datanode中格式化创建的数据目录：rm -rf  /usr/local/hadoop/dfs/data
+	- 否则会造成datanode启动不了	
+	
+2. 集群大家过程中环境变量的配置注意事项
+（1）linux下修改环境变量的有地方有三个
+	1）/etc/profile 系统环境变量配置，针对所有用户（包括root用户）
+	2）~/.bashrc   这是一个隐藏文件，ls命令看不到，也可以修改环境变量，用来修改用户环境变量，针对当前用户
+	3）~/.bash_profile  隐藏文件，用来修改用户环境变量，针对当前用户
+（2）这三个配置文件的加载顺序：1-->2-->3。生效顺序为最后一次加载的才会生效
+（3） 公司集群上的环境变量很可能不是配置在/etc/profile下的，可能配置在用户环境变量文件下
+
+3. 时间同步问题
+（1）完全分布式多个节点之间一定要做时间同步
+（2）目的：集群内部各个节点之间保持一致
+（3）为什么：因为集群内部各节点之间需要通信，尤其是datanode和namenode之间，它们之间的通信是依赖心跳（datanode定时向namenode发送心跳），它们之间的心跳是有时间控制的（630秒，如果630秒namenode接收不到datanode的心跳，就会认为该datanode已经宕机）
+
+五、集群安装模式
+（一）单机模式
+	- 直接解压，什么都不要配置，并且在一个节点上
+	- 没有分布式文件系统，所有文件都是来自本地，只能对本地文件进行读写
+	- 几乎没人用，
+
+（二）伪分布式
+	- 可以看作完全分布式，但是是跑在一个节点上（所有的进程配置在一个节点上）
+	- 有分布式文件系统，只不过这个文件系统只有一个节点
+	- 主要用于个人学习、测试
+
+（三）完全分布式
+	- 不同进程跑在不同的节点上
+	-  多台节点机器宏观上可以看成一个大的节点，后台的硬件配置是多台机器的硬件配置之和，但用户完全感觉不到
+	-  有主节点和从节点，主节点只有一个，从节点有多个。一般在公司中，namenode会单独做一个节点，不会与datanode在同一节点上		
+		- namenode负责存储元数据（管理数据的数据，实际上是datanode存储数据的描述，如数据存储在哪一个datanode节点，以及这个数据是哪个用户上传的，等等）；另外，处理读写请求，所有读写请求需要先要经过namenode
+		- datanode负责集群中数据的具体的数据存储和读写的处理
+	- 如果namenode宕机，则整个集群都不能使用，这是完全分布式的一大缺点（成为单点故障问题），所以一般公司中不太使用，主要在学习中或公司中测试时使用，以及公司中节点个数比较少的时候用（宕机的可能性随着几点数目的增加而提高）
+	- secondarynamenode可以看作namenode的冷备份，但其作用只是分担namenode的压力，但是不能代替，不能解决单点故障问题，所以出现了高可用集群
+
+（四）高可用
+	- 目前实际中使用最广泛的搭建方式，一般公司使用
+	- 高可用：指的是集群可以持续对外服务
+	- 依赖于zookeeper
+	- 高可用集群架构：
+		- 完全分布式：一主多从
+		- 高可用：双主多从。两个namenode，但同一时间只有一个是活跃的(active)，另一个处于热备份状态（standby，随时准备接替）,但是两个节点存储的元数据是一样的。
+		- 当active namenode宕机，standby namenode可以立即切换为active，保证集群持续对外提供服务
+		- 原来宕机的namenode恢复后，作为standby namenode
+	- 可以支撑200-500台节点机器
+	- 缺陷：在同一时间之后一个active namenode，也就是说集群主节点能力只有一个节点，当集群中节点个数过多的时候，也会造成namenode崩溃
+	 因为，namenode存储的元数据信息过多，会超出namenode的能力，两个namenode都会因超载而崩溃，standby实际上没有分担active的压力
+	这时，当集群节点过多（超大集群），就使用联邦机制
+		
+
+（五）联邦模式
+	- 超大集群使用，一般在集群节点多的电商公司使用
+	- 同一个集群中、同一时间有多个活跃的主节点，这些主节点是同等地位的
+	- 活跃的namenode共同使用集群中所有的datanode，每个namenode只负责管理集群中datanode上的一部分数据
+		- 管理的是哪部分数据，是通过datanode上VERSION中的blockpoolID来区分（与管理它的namenode的blockpoolID相同）
+	- 单纯的联邦模式也存在单点故障，所以联邦模式一般会和高可用模式一起使用
+
+五、其他
+1. 普通用户什么时候用sudo+命令
+	- 普通用户执行系统命令，没有权限的时候（如/etc/inittab）
+	- 普通用户有权限的，不需要
+
+	

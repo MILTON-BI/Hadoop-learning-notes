@@ -1,0 +1,7 @@
+1. zookeeper£º3.4.13
+2. hadoop: 2.7.2
+3. jdk£º8u201
+4. hbase: 1.4.9
+5. ubuntu linux: 16.04.6 LTS
+6. mysql£º5.7.25 for ubuntu16.04_amd64
+7. hive: 2.3.4

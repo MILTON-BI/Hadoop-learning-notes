@@ -1,0 +1,8 @@
+
+一、运行hadoop自带的实例程序
+- /usr/local/hadoop/share/hadoop/mapreduce# hadoop jar hadoop-mapreduce-examples-2.7.2.jar pi 6 7  计算pi
+- hadoop jar hadoop-mapreduce-examples-2.7.2.jar wordcount /test/words.txt /output  统计单词出现次数，并输出到output目录
+	- hadoop fs -cat /output/part-r-00000  察看单词统计的结果
+
+二、mapreduce介绍
+1. hadoop的mapreduce已经封装好了map类和reduce类，如果有自己的业务逻辑，只要重新写其中的map方法和reduce方法
